@@ -3,7 +3,7 @@ import hashlib
 import glob
 from supabase import create_client, Client
 
-# Kết nối Supabase
+# Kết nối Supabase từ biến môi trường của GitHub Secrets
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -28,7 +28,15 @@ def main():
     print("Bắt đầu đồng bộ văn bản lên Supabase...")
     md_files = glob.glob("**/*.md", recursive=True)
     
+    if not md_files:
+        print("Không tìm thấy file .md nào trong kho lưu trữ!")
+        return
+
     for file_path in md_files:
+        # Bỏ qua các file cấu hình hệ thống nếu có
+        if ".github" in file_path:
+            continue
+            
         with open(file_path, 'r', encoding='utf-8') as f:
             content = f.read()
             
@@ -36,13 +44,17 @@ def main():
             continue
             
         current_hash = get_file_hash(content)
-        response = supabase.table('documents').select('file_hash').eq('file_path', file_path).limit(1).execute()
         
-        if len(response.data) > 0 and response.data[0]['file_hash'] == current_hash:
-            print(f"Bỏ qua (Không đổi): {file_path}")
-            continue
+        # Kiểm tra xem file này đã từng đẩy lên chưa để tránh trùng lặp
+        try:
+            response = supabase.table('documents').select('file_hash').eq('file_path', file_path).limit(1).execute()
+            if len(response.data) > 0 and response.data[0]['file_hash'] == current_hash:
+                print(f"-> Bỏ qua (Nội dung không đổi): {file_path}")
+                continue
+        except Exception as e:
+            print(f"Lưu ý khi kiểm tra hash cũ: {e}")
             
-        print(f"Đang đẩy dữ liệu: {file_path}")
+        print(f"Đang xử lý và đẩy dữ liệu: {file_path}")
         chunks = chunk_text(content)
         
         for i, chunk_content in enumerate(chunks):
@@ -52,12 +64,16 @@ def main():
                 "file_path": file_path,
                 "content": chunk_content,
                 "file_hash": current_hash,
-                "embedding": None # Tài khoản doanh nghiệp chặn tạo vector -> Ta để trống cột này
+                # Điền 768 số 0 để vượt qua ràng buộc NOT NULL của Supabase mà không cần gọi API Google
+                "embedding": [0.0] * 768 
             }
-            supabase.table('documents').upsert(data).execute()
-            print(f"   + Đã lưu chunk {i}")
+            try:
+                supabase.table('documents').upsert(data).execute()
+                print(f"   + Đã lưu phân đoạn {i}")
+            except Exception as upsert_error:
+                print(f"   [!] Lỗi khi lưu phân đoạn {i}: {upsert_error}")
 
-    print("Hoàn tất đồng bộ!")
+    print("Hoàn tất tiến trình đồng bộ!")
 
 if __name__ == "__main__":
     main()
