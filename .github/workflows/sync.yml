@@ -1,30 +1,32 @@
-name: Sync GitHub Docs to Supabase (Vector DB)
+name: Sync GitHub Docs to Supabase
 
-# Tự động chạy mỗi khi có lệnh đẩy (push) lên nhánh main
 on:
   push:
     branches:
       - main
+    paths:
+      - '**/*.md'
+      - 'sync_docs.py'
 
 jobs:
-  sync_to_vector_db:
+  sync:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-python: '3.10'
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+    - name: Install dependencies
+      run: |
+        pip install supabase
 
-      - name: Run Sync Script
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        run: python sync_docs.py
+    - name: Run sync script
+      env:
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      run: python sync_docs.py
